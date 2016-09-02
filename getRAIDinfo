@@ -1,0 +1,67 @@
+#!/bin/bash
+#Date: 2016/1/6
+#Author: Wu xi
+
+ver='2016-05-05'
+
+echo "Wu Xi: version-$ver"
+
+ri='/tmp/raid_info'
+os_s='/tmp/*.out'
+e='/tmp/event'
+tn="raid-info_$(date +%s)"
+sn=$(dmidecode -t 1 | grep -i 'serial number' | cut -d ':' -f 2 | tr -d ' ')
+
+: > $ri
+
+function sectionSeperator()
+{
+echo "---$1---" >> $ri
+}
+sectionSeperator 'driverinfo'
+modinfo megaraid_sas >> $ri
+
+sectionSeperator 'adpallinfo'
+MegaCli -adpallinfo -a0 >> $ri
+
+sectionSeperator 'ldinfo'
+MegaCli -ldinfo -lall -a0 >> $ri
+
+sectionSeperator 'pdlist'
+MegaCli -pdlist -a0 >> $ri
+
+sectionSeperator 'ldpdinfo'
+MegaCli -ldpdinfo -a0 >> $ri
+
+sectionSeperator 'fwtermlog'
+MegaCli -fwtermlog -dsply -a0 >> $ri
+
+sectionSeperator 'events'
+for i in info warning critical fatal
+do
+  MegaCli -adpeventlog -getevents -$i -f $e.$i -a0
+done
+
+dos2unix -q ${ri}
+
+#Get System Status
+# echo p > /proc/sysrq-trigger (dumps current CPU registers and flags)
+# echo m > /proc/sysrq-trigger (dumps information about memory allocation)
+# echo t > /proc/sysrq-trigger (dumps thread state information)
+# echo w > /proc/sysrq-trigger (dumps tasks that are in uninterruptable (blocked) state)
+echo "Getting Various statistics of the operating system..."
+uname -a > /tmp/uname.out
+ifconfig > /tmp/ifcongfig.out
+top -n 5 -b > /tmp/top.out
+vmstat 1 50 > /tmp/vm.out
+iostat -x 2 10 > /tmp/io.out
+ps aux > /tmp/ps.out
+ps auxH > /tmp/psh.out
+sar -A > /tmp/sar.out
+free > /tmp/free.out
+lsof > /tmp/lsof.out
+for i in $(ls /dev/sd* | grep -iv '[[:digit:]]$'); do echo -n "${i}: "; cat /sys/block/${i:5}/queue/scheduler; done > /tmp/iosched.out
+
+tar cfjP ${sn}_${tn}.tar.bz2 ${ri} ${e}.* ${os_s}
+
+echo -e "\033[1mMessages collected:\t<${sn}_${tn}.tar.bz2>, sent it back to Wu Xi\033[0m"
