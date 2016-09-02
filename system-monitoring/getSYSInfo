@@ -1,0 +1,135 @@
+#!/bin/bash
+#Author: Wu Xi
+#Date: 2015/06/24
+
+if [ $# -ne 1 ]
+  then
+  echo -e "\E[31;40mPlease specify IP address\E[0m"
+  exit 2
+fi
+
+bmc_ip=$1
+username='ksyun'
+#username='root'
+password='ks3Fsys%'
+#password='kingsoft'
+db_username='ksc_app_op'
+db_password='kingsoft123'
+cmdb_host='10.0.1.103'
+db_name='ksc_cmdb'
+idc_table='IDC_Device_Info'
+
+ipmi_cmd="ipmitool -I lanplus -H $bmc_ip -U $username -P $password"
+sdr_cmd="ipmi-sensors -h $bmc_ip -u $username -p $password --output-sensor-state --ignore-not-available-sensors -Q -D LAN_2_0 --sdr-cache-recreate"
+sel_cmd="ipmi-sel -h $bmc_ip -u $username -p $password --output-event-state -Q -D LAN_2_0 --sdr-cache-recreate"
+
+declare -A rc
+rc['00']='unknown reason, probably caused by operating system, like OS hung, MCE, etc'
+rc['01']='Chassis Control Command, it is BMC from which the command came'
+rc['02']='reset via pushbutton'
+rc['03']='power-up via power pushbutton'
+rc['04']='Watchdog expiration'
+rc['05']='OEM'
+rc['06']='automatic power-up on AC being applied due to [always restore] power restore policy'
+rc['07']='automatic power-up on AC being applied due to [restore previous power state] power restore policy'
+rc['08']='reset via PEF'
+rc['09']='power-cycle via PEF'
+rc['0a']='soft reset(e.g. CTRL-ALT-DEL)'
+rc['0b']='power-up via RTC'
+
+if ! ipmiping -c 2 -t 3 $bmc_ip > /dev/null 2>&1
+then
+  echo -e "\E[31;40m[$1] is NOT a IPMI device\E[0m"
+  exit 2
+else
+  echo -e "\E[32;40m*********************************\E[0m"
+  echo -e "\E[32;40m*     System Health Summary     *\E[0m"
+  echo -e "\E[32;40m*********************************\E[0m"
+  sleep 1
+fi
+
+function get_OS_info()
+{
+  echo -e "\033[1m[OS IP]:\t\033[0m"
+  tip=$(mysql --user="$db_username" --password="$db_password" --host="$cmdb_host" -s -N --database="$db_name" --execute="select Intranet_IP from IDC_Device_Info where RSA_IP like '%${bmc_ip}%';")
+  os_ip=${tip//;/}
+  ping -c 2 -W 2 -q $os_ip > /dev/null 2>&1 && echo -e "\E[33;40m${os_ip}[Pingable]\E[0m" || echo -e "\E[33;40m${os_ip}[Not pingable]\E[0m"
+}
+
+function get_product_name()
+{
+  echo -e "\033[1m[Product Name]\033[0m"
+  t=$($ipmi_cmd fru print 0 2>&1)
+  pn=$(echo "$t" | grep -i 'product name' | cut -d ':' -f 2 | sed 's/^ //')
+  if [ "$pn" != '' ]
+  then
+    echo -e "\E[33;40m$pn\E[0m"
+  else
+    echo 'N/A'
+  fi
+}
+
+function get_bmc_time()
+{
+  echo -e "\033[1m[BMC time]\033[0m"
+  t=$($ipmi_cmd sel time get)
+  echo -e "\E[33;40m$t\E[0m"
+}
+
+function get_temp()
+{
+  echo -e "\033[1m[Temps]\033[0m"
+  t=$($ipmi_cmd sdr type Temperature | grep -iE '^inlet|^ambient t|01-Front Ambie')
+  echo -e "\E[33;40m$t\E[0m"
+}
+
+function get_restart_cause()
+{
+read b1 b2 <<EOF
+$($ipmi_cmd raw 0x00 0x07)
+EOF
+echo -e "\033[1m[Restart Cause]\033[0m"
+echo -e "\E[33;40m${rc["$b1"]}\E[0m"
+}
+
+function get_sel()
+{
+  echo -e "\033[1m[Last 15 events]\033[0m"
+  $ipmi_cmd sel elist | tail -15
+}
+
+function get_abnormal_sel()
+{
+  echo -e "\033[1m[Abnormal events]\033[0m"
+  x=$($sel_cmd | gawk -F '|' '$6 ~ /Warning|Critical/ {print $0}')
+  n=$(echo "$x" | grep -ivE '^$' | wc -l)
+  if [ $n -gt 0 ]
+  then
+    echo "$x"
+  else
+    echo "None"
+  fi
+}
+
+function get_sensor()
+{
+  echo -e "\033[1m[Abnormal sensors]\033[0m"
+  x=$($sdr_cmd | gawk -F '|' '$4 ~ /Warning|Critical/ {print $0}')
+  n=$(echo "$x" | grep -ivE '^$' | wc -l)
+  if [ $n -gt 0 ]
+  then
+    echo "$x"
+  else
+    echo "None"
+  fi
+}
+
+#main function
+get_OS_info
+get_product_name
+get_bmc_time
+get_temp
+get_restart_cause
+get_sel
+get_abnormal_sel
+get_sensor
