@@ -1,1 +1,1 @@
-# vmcore Analyzer Readme:
+# vmcore-dmesg Analyzer
