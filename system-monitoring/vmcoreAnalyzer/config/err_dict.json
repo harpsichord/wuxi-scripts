@@ -1,1 +1,20 @@
-
+{
+  "MCE": {
+    "Hardware Error": ["0", "Machine Check(MCE)"]
+  },
+  "OOPS": {
+    "Oops: 0": ["1", "Kernel Oops"]
+  },
+  "BUG": {
+    "nel BUG at *": ["1", "Kernel Bug"]
+  },
+  "GPF": {
+    "general protection fault": ["1", "general protection fault"]
+  },
+  "DER": {
+    "BUG: unable to handle kernel NULL pointer dereference at": ["1", "Dereferenced NULL pointer"]
+  },
+  "NSYN": {
+    "Kernel panic - not syncing": ["1", "Kernel panic - not syncing, need more details"]
+  }
+}
